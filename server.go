@@ -35,7 +35,7 @@ func MainHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-
+		fmt.Println(w, "HTTP/1.1 200 OK\r")
 	default:
 		fmt.Fprintf(w, "Request method %s is not supported", r.Method)
 	}
