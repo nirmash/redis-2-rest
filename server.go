@@ -129,7 +129,7 @@ func main() {
 	//execute a lua script
 	http.HandleFunc("/s/", ExecuteScript)
 
-	fmt.Println("Listening on port 5050...")
+	fmt.Println("Listening on port 80...")
 
-	http.ListenAndServe(":5050", nil)
+	http.ListenAndServe(":80", nil)
 }
