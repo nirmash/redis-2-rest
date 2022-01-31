@@ -18,16 +18,15 @@ func UpsertEntity(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "This is GET request at path = %s", r.URL.Path)
 	case "DELETE":
 		//calculate the key name and delete it
-		var obj_name = strings.Split(r.URL.Path, "/")[2]
-		if err := r.ParseForm(); err != nil {
-			fmt.Fprintf(w, "ParseForm() err: %v", err)
+		var urls []string = strings.Split(r.URL.Path, "/")
+		if len(urls) < 4 {
+			fmt.Fprintf(w, "URL is missing a record id to delete")
 			return
 		}
-		var id = r.Form.Get("id")
-		if id == "" {
-			fmt.Fprintf(w, "Record Id not specified")
-			return
-		}
+
+		var obj_name = urls[2]
+		var id = urls[3]
+
 		key_name := fmt.Sprintf("%s_%s", obj_name, id)
 		var retVal string
 		err := rdb.Do(ctx, radix.FlatCmd(&retVal, "DEL", key_name))
