@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"strings"
@@ -10,9 +11,15 @@ import (
 )
 
 var ctx = context.Background()
-var rdb = RedisConnect()
+
+var min_acl [4]string = [4]string{"+schema.help", "+schema.execute_query_lua", "+schema.upsert_row", "~*"}
 
 func UpsertEntity(w http.ResponseWriter, r *http.Request) {
+	var rdb = RedisAuth(r)
+	if rdb == nil {
+		fmt.Fprintf(w, "Auth failed")
+		return
+	}
 	switch r.Method {
 	case "GET":
 		fmt.Fprintf(w, "This is GET request at path = %s", r.URL.Path)
@@ -21,7 +28,7 @@ func UpsertEntity(w http.ResponseWriter, r *http.Request) {
 		var urls []string = strings.Split(r.URL.Path, "/")
 		if len(urls) < 4 {
 			fmt.Fprintf(w, "URL is missing a record id to delete")
-			return
+			break
 		}
 
 		var obj_name = urls[2]
@@ -34,14 +41,13 @@ func UpsertEntity(w http.ResponseWriter, r *http.Request) {
 			panic(err)
 		}
 		fmt.Fprintf(w, retVal)
-		return
 
 	case "POST":
 		var obj_name = strings.Split(r.URL.Path, "/")[2]
 		fmt.Println(obj_name)
 		if err := r.ParseForm(); err != nil {
 			fmt.Fprintf(w, "ParseForm() err: %v", err)
-			return
+			break
 		}
 		var id = r.Form.Get("id")
 		var cnt = len(r.Form) * 2
@@ -69,13 +75,18 @@ func UpsertEntity(w http.ResponseWriter, r *http.Request) {
 			panic(err)
 		}
 		fmt.Fprintf(w, retVal)
-		return
 	default:
 		fmt.Fprintf(w, "Request method %s is not supported", r.Method)
 	}
+	rdb.Close()
 }
 
 func ExecuteScript(w http.ResponseWriter, r *http.Request) {
+	var rdb = RedisAuth(r)
+	if rdb == nil {
+		fmt.Fprintf(w, "Auth failed")
+		return
+	}
 	switch r.Method {
 	case "GET":
 		fmt.Fprintf(w, "This is GET request at path = %s", r.URL.Path)
@@ -85,7 +96,7 @@ func ExecuteScript(w http.ResponseWriter, r *http.Request) {
 		//connection impersonation to come later
 		if err := r.ParseForm(); err != nil {
 			fmt.Fprintf(w, "ParseForm() err: %v", err)
-			return
+			break
 		}
 		var arr_len int = len(r.Form)
 		var params = make([]string, arr_len)
@@ -105,9 +116,43 @@ func ExecuteScript(w http.ResponseWriter, r *http.Request) {
 	default:
 		fmt.Fprintf(w, "Request method %s is not supported", r.Method)
 	}
+	rdb.Close()
+}
+
+func RegisterClient(w http.ResponseWriter, r *http.Request) {
+	var rdb = RedisAuth(r)
+	if rdb == nil {
+		fmt.Fprintf(w, "Auth failed")
+		return
+	}
+	switch r.Method {
+	case "GET":
+		fmt.Fprintf(w, "This is GET request at path = %s", r.URL.Path)
+	case "POST":
+		//connection impersonation to come later
+		if err := r.ParseForm(); err != nil {
+			fmt.Fprintf(w, "ParseForm() err: %v", err)
+			break
+		}
+		if len(r.Form.Get("client_name")) == 0 || len(r.Form.Get("client_key")) == 0 {
+			fmt.Fprintf(w, "client name or key not supplied")
+			break
+		}
+		var retVal string
+
+		err := rdb.Do(ctx, radix.FlatCmd(&retVal, "acl", "setuser", r.Form.Get("client_name"), "on", fmt.Sprintf(">%s", r.Form.Get("client_key")), min_acl))
+		if err != nil {
+			panic(err)
+		}
+		fmt.Fprintf(w, retVal)
+	default:
+		fmt.Fprintf(w, "Request method %s is not supported", r.Method)
+	}
+	rdb.Close()
 }
 
 func FormatRedisResult(retVal []interface{}) string {
+
 	valArr := make([]string, len(retVal))
 	for ii := 0; ii < len(retVal); ii++ {
 		valArr[ii] = fmt.Sprintf("%s", retVal[ii])
@@ -115,11 +160,28 @@ func FormatRedisResult(retVal []interface{}) string {
 	return strings.Join(valArr, "\r")
 }
 
-func RedisConnect() radix.Client {
-	client, err := (radix.PoolConfig{}).New(ctx, "tcp", "127.0.0.1:6379")
+func RedisAuth(r *http.Request) radix.Client {
+	var hdr = r.Header["Authorization"][0]
+	var credstr = strings.Split(hdr, " ")[1]
+	auth, err := base64.StdEncoding.DecodeString(credstr)
+	if err != nil {
+		fmt.Println("error:", err)
+		return nil
+	}
+	var creds []string = strings.Split(string(auth), ":")
+	return RedisConnect(creds[0], creds[1])
+}
+
+func RedisConnect(user, password string) radix.Client {
+
+	var d radix.Dialer
+	d.AuthPass = password
+	d.AuthUser = user
+	client, err := d.Dial(ctx, "tcp", "127.0.0.1:6379")
 	if err != nil {
 		panic(err)
 	}
+
 	return client
 }
 
@@ -128,6 +190,8 @@ func main() {
 	http.HandleFunc("/e/", UpsertEntity)
 	//execute a lua script
 	http.HandleFunc("/s/", ExecuteScript)
+	//register client
+	http.HandleFunc("/register", RegisterClient)
 
 	fmt.Println("Listening on port 80...")
 
