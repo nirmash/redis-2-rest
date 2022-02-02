@@ -15,9 +15,9 @@ var ctx = context.Background()
 var min_acl [4]string = [4]string{"+schema.help", "+schema.execute_query_lua", "+schema.upsert_row", "~*"}
 
 func UpsertEntity(w http.ResponseWriter, r *http.Request) {
-	var rdb = RedisAuth(r)
-	if rdb == nil {
-		fmt.Fprintf(w, "Auth failed")
+	var hdr = r.Header["Authorization"]
+	if len(hdr) == 0 {
+		fmt.Fprintf(w, "Auth failed - no auth header")
 		return
 	}
 	switch r.Method {
@@ -34,12 +34,11 @@ func UpsertEntity(w http.ResponseWriter, r *http.Request) {
 		var obj_name = urls[2]
 		var id = urls[3]
 
+		params := make([]string, 1)
 		key_name := fmt.Sprintf("%s_%s", obj_name, id)
+		params[0] = key_name
 		var retVal string
-		err := rdb.Do(ctx, radix.FlatCmd(&retVal, "DEL", key_name))
-		if err != nil {
-			panic(err)
-		}
+		retVal = ExecuteRedisCommand(hdr[0], "DEL", params)
 		fmt.Fprintf(w, retVal)
 
 	case "POST":
@@ -53,11 +52,11 @@ func UpsertEntity(w http.ResponseWriter, r *http.Request) {
 		var cnt = len(r.Form) * 2
 		if id == "" {
 			id = "-1"
-		} else {
-			cnt = cnt - 2
 		}
-		params := make([]string, cnt)
-		var ii = 0
+		params := make([]string, cnt+2)
+		params[0] = id
+		params[1] = obj_name
+		var ii = 2
 		for key, values := range r.Form { // range over map
 			for _, value := range values { // range over []string
 				fmt.Println(key, value)
@@ -70,21 +69,17 @@ func UpsertEntity(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		var retVal string
-		err := rdb.Do(ctx, radix.FlatCmd(&retVal, "schema.upsert_row", id, obj_name, params))
-		if err != nil {
-			panic(err)
-		}
+		retVal = ExecuteRedisCommand(hdr[0], "schema.upsert_row", params)
 		fmt.Fprintf(w, retVal)
 	default:
 		fmt.Fprintf(w, "Request method %s is not supported", r.Method)
 	}
-	rdb.Close()
 }
 
 func ExecuteScript(w http.ResponseWriter, r *http.Request) {
-	var rdb = RedisAuth(r)
-	if rdb == nil {
-		fmt.Fprintf(w, "Auth failed")
+	var hdr = r.Header["Authorization"]
+	if len(hdr) == 0 {
+		fmt.Fprintf(w, "Auth failed - no auth header")
 		return
 	}
 	switch r.Method {
@@ -99,28 +94,47 @@ func ExecuteScript(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		var arr_len int = len(r.Form)
-		var params = make([]string, arr_len)
-		var ii = 0
+		var params = make([]string, arr_len+1)
+		params[0] = obj_name
+		var ii = 1
 		for key := range r.Form { // range over map
 			params[ii] = key
 			ii++
 			fmt.Println(key)
 		}
 		var retVal []interface{}
-		err := rdb.Do(ctx, radix.FlatCmd(&retVal, "schema.execute_query_lua", obj_name, params))
-		if err != nil {
-			panic(err)
-		}
-		var str = FormatRedisResult(retVal)
-		fmt.Fprintf(w, str)
+		ExecuteRedisCommand(hdr[0], "schema.execute_query_lua", params)
+		fmt.Fprintf(w, FormatRedisResult(retVal))
 	default:
 		fmt.Fprintf(w, "Request method %s is not supported", r.Method)
 	}
+}
+
+func ExecuteRedisCommand(header, command string, params []string) string {
+	var rdb = RedisAuth(header)
+	if rdb == nil {
+		return "Can't connect to Redis"
+	}
+	var retVal interface{}
+	err := rdb.Do(ctx, radix.FlatCmd(&retVal, command, params))
+	if err != nil {
+		panic(err)
+	}
+	//identify the result type (array vs. individual value)
+	ts := fmt.Sprintf("%T", retVal)
+	var retString string
+	switch ts {
+	case "[]interface {}":
+		retString = FormatRedisResult(retVal.([]interface{}))
+	case "[]uint8":
+		retString = string(retVal.([]byte))
+	}
 	rdb.Close()
+	return retString
 }
 
 func RegisterClient(w http.ResponseWriter, r *http.Request) {
-	var rdb = RedisAuth(r)
+	var rdb = RedisAuth(r.Header["Authorization"][0])
 	if rdb == nil {
 		fmt.Fprintf(w, "Auth failed")
 		return
@@ -139,7 +153,6 @@ func RegisterClient(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		var retVal string
-
 		err := rdb.Do(ctx, radix.FlatCmd(&retVal, "acl", "setuser", r.Form.Get("client_name"), "on", fmt.Sprintf(">%s", r.Form.Get("client_key")), min_acl))
 		if err != nil {
 			panic(err)
@@ -157,12 +170,11 @@ func FormatRedisResult(retVal []interface{}) string {
 	for ii := 0; ii < len(retVal); ii++ {
 		valArr[ii] = fmt.Sprintf("%s", retVal[ii])
 	}
-	return strings.Join(valArr, "\r")
+	return strings.Join(valArr, " ")
 }
 
-func RedisAuth(r *http.Request) radix.Client {
-	var hdr = r.Header["Authorization"][0]
-	var credstr = strings.Split(hdr, " ")[1]
+func RedisAuth(header string) radix.Client {
+	var credstr = strings.Split(header, " ")[1]
 	auth, err := base64.StdEncoding.DecodeString(credstr)
 	if err != nil {
 		fmt.Println("error:", err)
