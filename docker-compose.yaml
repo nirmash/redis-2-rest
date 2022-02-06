@@ -1,0 +1,28 @@
+version: "3.7"
+services:
+  redis:
+    image: nirmashkowski/redis-schema
+    networks:
+      redis_api_net:
+        ipv4_address: 172.28.1.4
+    expose:
+      - "6379"
+    ports:
+      - "6379:6379"
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    networks:
+      redis_api_net:
+        ipv4_address: 172.28.1.6
+    expose:
+      - "80"
+    ports:
+      - "80:80"        
+networks:
+  redis_api_net:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/16

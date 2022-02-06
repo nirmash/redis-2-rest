@@ -1,5 +1,5 @@
 # The base go-image
-FROM golang:1.14-alpine
+FROM golang:1.17-alpine
  
 # Create a directory for the app
 RUN mkdir /app
@@ -9,6 +9,12 @@ COPY . /app
  
 # Set working directory
 WORKDIR /app
+
+ENV OS_PORT=80
+ENV REDIS_IP=172.28.1.4
+ENV REDID_PORT=6379
+
+EXPOSE 80
  
 # Run command as described:
 # go build will build an executable file named server in the current directory
