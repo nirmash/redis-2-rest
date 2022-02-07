@@ -40,7 +40,7 @@ func UpsertEntity(w http.ResponseWriter, r *http.Request) {
 		key_name := fmt.Sprintf("%s_%s", obj_name, id)
 		params[0] = key_name
 		var retVal string
-		retVal = ExecuteRedisCommand(hdr[0], "DEL", params)
+		retVal = execute_redis_command(hdr[0], "DEL", params)
 		fmt.Fprintf(w, retVal)
 
 	case "POST":
@@ -71,7 +71,7 @@ func UpsertEntity(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		var retVal string
-		retVal = ExecuteRedisCommand(hdr[0], "schema.upsert_row", params)
+		retVal = execute_redis_command(hdr[0], "schema.upsert_row", params)
 		fmt.Fprintf(w, retVal)
 	default:
 		fmt.Fprintf(w, "Request method %s is not supported", r.Method)
@@ -102,7 +102,7 @@ func ExecuteScript(w http.ResponseWriter, r *http.Request) {
 			fmt.Println(key)
 		}
 		var retVal string
-		retVal = ExecuteRedisCommand(hdr[0], "schema.execute_query_lua", params)
+		retVal = execute_redis_command(hdr[0], "schema.execute_query_lua", params)
 		fmt.Fprintf(w, retVal)
 	default:
 		fmt.Fprintf(w, "Request method %s is not supported", r.Method)
@@ -137,38 +137,11 @@ func ExecuteAnyCommand(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		var retVal string
-		retVal = ExecuteRedisCommand(hdr[0], command, params)
+		retVal = execute_redis_command(hdr[0], command, params)
 		fmt.Fprintf(w, retVal)
 	default:
 		fmt.Fprintf(w, "Request method %s is not supported", r.Method)
 	}
-}
-
-func ExecuteRedisCommand(header, command string, params []string) string {
-	var rdb = redis_auth(header)
-	if rdb == nil {
-		return "Can't connect to Redis"
-	}
-	var retVal interface{}
-	err := rdb.Do(ctx, radix.FlatCmd(&retVal, command, params))
-	if err != nil {
-		panic(err)
-	}
-	//identify the result type (array vs. individual value)
-	ts := fmt.Sprintf("%T", retVal)
-	var retString string
-	switch ts {
-	case "[]interface {}":
-		retString = redis_format_results(retVal.([]interface{}))
-	case "[]uint8":
-		retString = string(retVal.([]byte))
-	case "string":
-		retString = retVal.(string)
-	case "int64":
-		retString = fmt.Sprintf("%d", retVal.(int64))
-	}
-	rdb.Close()
-	return retString
 }
 
 func RegisterClient(w http.ResponseWriter, r *http.Request) {
@@ -206,6 +179,33 @@ func RegisterClient(w http.ResponseWriter, r *http.Request) {
 
 func Ping(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Pong. Port is: %s", os.Getenv("OS_PORT"))
+}
+
+func execute_redis_command(header, command string, params []string) string {
+	var rdb = redis_auth(header)
+	if rdb == nil {
+		return "Can't connect to Redis"
+	}
+	var retVal interface{}
+	err := rdb.Do(ctx, radix.FlatCmd(&retVal, command, params))
+	if err != nil {
+		panic(err)
+	}
+	//identify the result type (array vs. individual value)
+	ts := fmt.Sprintf("%T", retVal)
+	var retString string
+	switch ts {
+	case "[]interface {}":
+		retString = redis_format_results(retVal.([]interface{}))
+	case "[]uint8":
+		retString = string(retVal.([]byte))
+	case "string":
+		retString = retVal.(string)
+	case "int64":
+		retString = fmt.Sprintf("%d", retVal.(int64))
+	}
+	rdb.Close()
+	return retString
 }
 
 func redis_format_results(retVal []interface{}) string {
