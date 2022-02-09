@@ -72,3 +72,55 @@ Now we can check for the data we just added.
 ``` bash 
 curl --user "client1:key1" -d "0=MyList" -X  POST "http://localhost/command/smembers"
 ```
+If we try to call a Redis command the `client1` user is not authorized for.
+``` bash
+ curl --user "client1:key1" -d "0=*" -X  POST "http://localhost/command/keys"
+```
+We will get an appropriate error message. 
+```
+response returned from Conn: unmarshaling message off Conn: NOPERM this user has no permissions to run the 'keys' command or its subcommand
+```
+## Advanced use-cases with `schema ` module
+The `schema` module allows for creating table-like entities in Redis and for using Lua scripts to query them. 
+
+**Note:** To make this sample work, make sure the Redis container you are using has the [Redis schema](https://github.com/nirmash/redis-schema) running (that is the default for the `docker-compose.yaml` file provided here).
+
+### Create and populate a table entity
+First, we will use the Redis cli to authenticate as the `default` user.
+```bash
+redis-cli
+127.0.0.1:6379> auth default secret
+OK
+```
+Define columns (data validation rules) and a `contacts` table (table rule). 
+```bash
+127.0.0.1:6379> schema.string_rule firstName 20
+127.0.0.1:6379> schema.string_rule lastName 20
+127.0.0.1:6379> schema.number_rule age 0 150
+127.0.0.1:6379> schema.table_rule contacts firstName lastName age
+```
+Now let's load some test data into `contacts`
+```bash
+127.0.0.1:6379> schema.upsert_row -1 contacts firstName john lastName doe age 25
+127.0.0.1:6379> schema.upsert_row -1 contacts firstName jane lastName doe age 30
+127.0.0.1:6379> schema.upsert_row -1 contacts firstName alexander lastName hamilton age 45
+```
+And finally, we will load a simple lua script that returns all the records from a given table name. 
+```bash
+127.0.0.1:6379> schema.register_query_lua select_all.lua 'if KEYS[1] == nil then return "missing table name" end  local results = {}  local tableScanItems = {}  local i = 1  tableScanItems = redis.call("keys",KEYS[1] .. "_*")  for _, tableScanItem in next, tableScanItems do results[i] = redis.call("hgetall",tableScanItem) i = i + 1 end return results'
+```
+### Add records and query data using the REST API
+To add a new record using the REST API we will use the entity (`/e/`) endpoint. 
+```bash
+curl --user "client1:key1" -d "firstName=Abe&lastName=Lincoln&age=100" -X  POST "http://localhost/e/contacts"
+```
+We can now use the `select_all.lua` script to return all the data by using the API. 
+```bash
+curl --user "client1:key1" -d "contacts" -X  POST "http://localhost/s/select_all.lua"
+```
+Which returns the data in text format:
+```bash
+[Id 3 firstName alexander lastName hamilton age 45] [Id 1 firstName john lastName doe age 25] [Id 4 firstName Abe lastName Lincoln age 100] [Id 2 firstName jane lastName doe age 30]
+```
+## Conclusion
+This article demonstrates a more secure way to interact with a Redis server using an HTTP API. Take a look at the code on [GitHub](https://github.com/nirmash/redis-2-rest). 
