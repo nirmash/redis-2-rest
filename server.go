@@ -145,9 +145,9 @@ func ExecuteAnyCommand(w http.ResponseWriter, r *http.Request) {
 }
 
 func RegisterClient(w http.ResponseWriter, r *http.Request) {
-	var rdb = redis_auth(r.Header["Authorization"][0])
-	if rdb == nil {
-		fmt.Fprintf(w, "Auth failed")
+	rdb, err := redis_auth(r.Header["Authorization"][0])
+	if err != nil {
+		fmt.Fprintf(w, err.Error())
 		return
 	}
 	switch r.Method {
@@ -182,14 +182,14 @@ func Ping(w http.ResponseWriter, r *http.Request) {
 }
 
 func execute_redis_command(header, command string, params []string) string {
-	var rdb = redis_auth(header)
-	if rdb == nil {
-		return "Can't connect to Redis"
+	rdb, err := redis_auth(header)
+	if err != nil {
+		return err.Error()
 	}
 	var retVal interface{}
-	err := rdb.Do(ctx, radix.FlatCmd(&retVal, command, params))
+	err = rdb.Do(ctx, radix.FlatCmd(&retVal, command, params))
 	if err != nil {
-		panic(err)
+		return err.Error()
 	}
 	//identify the result type (array vs. individual value)
 	ts := fmt.Sprintf("%T", retVal)
@@ -217,18 +217,18 @@ func redis_format_results(retVal []interface{}) string {
 	return strings.Join(valArr, " ")
 }
 
-func redis_auth(header string) radix.Client {
+func redis_auth(header string) (radix.Client, error) {
 	var credstr = strings.Split(header, " ")[1]
 	auth, err := base64.StdEncoding.DecodeString(credstr)
 	if err != nil {
 		fmt.Println("error:", err)
-		return nil
+		return nil, err
 	}
 	var creds []string = strings.Split(string(auth), ":")
 	return redis_connect(creds[0], creds[1])
 }
 
-func redis_connect(user, password string) radix.Client {
+func redis_connect(user, password string) (radix.Client, error) {
 
 	var redis_ip = os.Getenv("REDIS_IP")
 	if len(redis_ip) == 0 {
@@ -244,10 +244,9 @@ func redis_connect(user, password string) radix.Client {
 	d.AuthUser = user
 	client, err := d.Dial(ctx, "tcp", redis_connection)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-
-	return client
+	return client, nil
 }
 
 func main() {

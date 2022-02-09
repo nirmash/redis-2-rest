@@ -4,7 +4,7 @@ services:
     image: nirmashkowski/redis-schema
     networks:
       redis_api_net:
-        ipv4_address: 172.28.1.4
+        ipv4_address: 172.28.1.1
     expose:
       - "6379"
     ports:
@@ -15,7 +15,7 @@ services:
       dockerfile: Dockerfile
     networks:
       redis_api_net:
-        ipv4_address: 172.28.1.6
+        ipv4_address: 172.28.1.2
     expose:
       - "80"
     ports:

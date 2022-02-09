@@ -38,10 +38,12 @@ cd redis-2-rest
 ```
 Then, launch the Redis and API containers.
 ```bash
+docker-compose pull
 docker-compose up --build -d
 ```
 **Note:** The sample is using a Redis container with the `schema` modules installed by pulling it the docker hub public registry. This container can either be replaced with a generic Redis container by editing the `docker-compose.yaml` or to build it locally by following the instructions on the [Redis schema](https://github.com/nirmash/redis-schema) github repository. 
 
+### Setup the default user password
 Setup a password for the `default` Redis user. 
 ```bash
 redis-cli
@@ -50,10 +52,23 @@ and when the Redis cli command line appears:
 ```bash
 127.0.0.1:6379> acl setuser default on >secret
 ```
+The Redis database will now need to be authenticated by using the AUTH command with the password defined above.
 
+### Create an api client with limited permissions
+To setup an API client with limited Redis permission, use the `/register` endpoint. This API authenticates as the `default` user with the password defined earlier. 
+```bash
+curl --user "default:secret" -d "client_name=client1&client_key=key1&client_type=safe_acl" -X  POST "http://localhost/register"
+```
+This command created a Redis user called "client1" with a password called "key1" that has a limited set of permissions (removing all dangerous Redis command as explained [here](https://redis.io/topics/acl))
 
+### Call a Redis command 
+The `/command/<Redis_command_name>` endpoint executes any Redis command. Parameters are passed as HTTP request key-value pairs with the key name designating the parameter location in the Redis command. In the below example calls the [SADD](https://redis.io/commands/sadd) Redis command and passes three values in order.
 
+```bash
+curl --user "client1:key1" -d "0=MyList&1=One&2=Two&3=Three" -X  POST "http://localhost/command/sadd"
+```
+Now we can check for the data we just added.
 
 ``` bash 
-curl --user "tommy:lee" -d "0=MyList" -X  POST "http://localhost/command/smembers"
+curl --user "client1:key1" -d "0=MyList" -X  POST "http://localhost/command/smembers"
 ```
