@@ -19,13 +19,39 @@ The below commands are dependant on the [schema](https://github.com/nirmash/redi
 ## Authentication and authorization
 The sample in this article uses [basic auth](https://en.wikipedia.org/wiki/Basic_access_authentication) HTTP headers to pass user names and passwords to Redis. Redis 6.0+ uses an [ACL](https://redis.io/topics/acl) subsystem to assign permissions to an individual user which is then used to connect to Redis. When calling the `/register` API in the sample, the call needs to have access to the `ACL SETUSER` command. Redis automatically comes with an admin user called `default` that has access to all Redis commands. 
 
-**Note:** The `default` user comes with an empty password 
+**Note:** The `default` user comes with an empty password. The sample includes a command to set password for the `default` user.
 
-## Pre-requisites
+## Using the sample
+### Pre-requisites
 Using this sample requires the following.
 1. Install [Git](https://git-scm.com/downloads)
 2. Install [Docker](https://docs.docker.com/get-docker/)
 3. Install [Docker Compose](https://docs.docker.com/compose/install/)
+
+### Download and run locally 
+First, clone the github repository
+```bash
+git clone https://github.com/nirmash/redis-2-rest
+```
+```
+cd redis-2-rest
+```
+Then, launch the Redis and API containers.
+```bash
+docker-compose up --build -d
+```
+**Note:** The sample is using a Redis container with the `schema` modules installed by pulling it the docker hub public registry. This container can either be replaced with a generic Redis container by editing the `docker-compose.yaml` or to build it locally by following the instructions on the [Redis schema](https://github.com/nirmash/redis-schema) github repository. 
+
+Setup a password for the `default` Redis user. 
+```bash
+redis-cli
+```
+and when the Redis cli command line appears:
+```bash
+127.0.0.1:6379> acl setuser default on >secret
+```
+
+
 
 
 ``` bash 
