@@ -1,0 +1,14 @@
+version: "3.4"
+services:
+  api:
+    image: nirmashkowski/api-svr
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:      
+      - redis
+  redis:
+    image: nirmashkowski/redis-schema
+    restart: always
+    ports:
+      - "6379:6379"     
